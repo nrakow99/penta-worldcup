@@ -12,7 +12,7 @@ export async function signUp(formData: FormData) {
   const password = formData.get("password") as string;
   const displayName = formData.get("displayName") as string;
 
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
@@ -21,7 +21,26 @@ export async function signUp(formData: FormData) {
   });
 
   if (error) return { error: error.message };
-  redirect("/dashboard");
+
+  // Belt-and-suspenders: ensure profile exists if trigger didn't run
+  if (data.user) {
+    await supabase.from("profiles").upsert({
+      id: data.user.id,
+      email,
+      display_name: displayName,
+    });
+  }
+
+  // Email confirmation enabled = no session yet; don't redirect to dashboard
+  if (data.session) {
+    redirect("/dashboard");
+  }
+
+  return {
+    success: true,
+    message:
+      "Account created! Check your email and click the confirmation link, then sign in.",
+  };
 }
 
 export async function signIn(formData: FormData) {
@@ -51,6 +70,16 @@ export async function createLeague(formData: FormData) {
   const lockDeadline = formData.get("lockDeadline") as string | null;
   const inviteCode = generateInviteCode();
 
+  // Ensure profile exists (leagues.admin_id FK requires it)
+  await supabase.from("profiles").upsert({
+    id: user.id,
+    email: user.email ?? "",
+    display_name:
+      (user.user_metadata?.display_name as string) ??
+      user.email?.split("@")[0] ??
+      "Player",
+  });
+
   const { data: league, error } = await supabase
     .from("leagues")
     .insert({
@@ -64,11 +93,16 @@ export async function createLeague(formData: FormData) {
 
   if (error) return { error: error.message };
 
-  await supabase.from("league_members").insert({
-    league_id: league.id,
-    user_id: user.id,
-    role: "admin",
-  });
+  // Creator is auto-added as admin via DB trigger (handle_new_league).
+  // Upsert here as a fallback if trigger hasn't run yet.
+  await supabase.from("league_members").upsert(
+    {
+      league_id: league.id,
+      user_id: user.id,
+      role: "admin",
+    },
+    { onConflict: "league_id,user_id" }
+  );
 
   const defaultMatches = createDefaultMatches(league.id);
   const { data: insertedMatches } = await supabase

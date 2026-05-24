@@ -1,14 +1,31 @@
 -- Bracket Punishment League - Initial Schema
--- Run this in your Supabase SQL editor or via supabase db push
+-- Run ONCE on a fresh Supabase project.
+-- If you already ran this (or get "already exists" errors), skip it — you're done.
+-- Only run new numbered migrations (e.g. 002_fix_signup_trigger.sql) after that.
 
--- Enums
-CREATE TYPE league_status AS ENUM ('open', 'locked', 'in_progress', 'finished');
-CREATE TYPE member_role AS ENUM ('admin', 'member');
-CREATE TYPE bracket_round AS ENUM ('r32', 'r16', 'qf', 'sf', 'final', 'champion');
-CREATE TYPE match_slot AS ENUM ('a', 'b');
+-- Enums (skip if already created)
+DO $$ BEGIN
+  CREATE TYPE league_status AS ENUM ('open', 'locked', 'in_progress', 'finished');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE member_role AS ENUM ('admin', 'member');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE bracket_round AS ENUM ('r32', 'r16', 'qf', 'sf', 'final', 'champion');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE match_slot AS ENUM ('a', 'b');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Profiles (extends auth.users)
-CREATE TABLE profiles (
+CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   display_name TEXT NOT NULL,
@@ -18,7 +35,7 @@ CREATE TABLE profiles (
 );
 
 -- Leagues
-CREATE TABLE leagues (
+CREATE TABLE IF NOT EXISTS leagues (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   invite_code TEXT NOT NULL UNIQUE,
@@ -31,11 +48,11 @@ CREATE TABLE leagues (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_leagues_invite_code ON leagues(invite_code);
-CREATE INDEX idx_leagues_admin_id ON leagues(admin_id);
+CREATE INDEX IF NOT EXISTS idx_leagues_invite_code ON leagues(invite_code);
+CREATE INDEX IF NOT EXISTS idx_leagues_admin_id ON leagues(admin_id);
 
 -- League members
-CREATE TABLE league_members (
+CREATE TABLE IF NOT EXISTS league_members (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   league_id UUID NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -44,11 +61,11 @@ CREATE TABLE league_members (
   UNIQUE(league_id, user_id)
 );
 
-CREATE INDEX idx_league_members_league ON league_members(league_id);
-CREATE INDEX idx_league_members_user ON league_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_league_members_league ON league_members(league_id);
+CREATE INDEX IF NOT EXISTS idx_league_members_user ON league_members(user_id);
 
 -- Teams (league-scoped, supports placeholders)
-CREATE TABLE teams (
+CREATE TABLE IF NOT EXISTS teams (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   league_id UUID NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
@@ -59,10 +76,10 @@ CREATE TABLE teams (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_teams_league ON teams(league_id);
+CREATE INDEX IF NOT EXISTS idx_teams_league ON teams(league_id);
 
 -- Matches (bracket structure)
-CREATE TABLE matches (
+CREATE TABLE IF NOT EXISTS matches (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   league_id UUID NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
   round bracket_round NOT NULL,
@@ -81,11 +98,11 @@ CREATE TABLE matches (
   UNIQUE(league_id, match_number)
 );
 
-CREATE INDEX idx_matches_league ON matches(league_id);
-CREATE INDEX idx_matches_round ON matches(league_id, round);
+CREATE INDEX IF NOT EXISTS idx_matches_league ON matches(league_id);
+CREATE INDEX IF NOT EXISTS idx_matches_round ON matches(league_id, round);
 
 -- Brackets (one per user per league)
-CREATE TABLE brackets (
+CREATE TABLE IF NOT EXISTS brackets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   league_id UUID NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -97,11 +114,11 @@ CREATE TABLE brackets (
   UNIQUE(league_id, user_id)
 );
 
-CREATE INDEX idx_brackets_league ON brackets(league_id);
-CREATE INDEX idx_brackets_user ON brackets(user_id);
+CREATE INDEX IF NOT EXISTS idx_brackets_league ON brackets(league_id);
+CREATE INDEX IF NOT EXISTS idx_brackets_user ON brackets(user_id);
 
 -- Bracket picks
-CREATE TABLE bracket_picks (
+CREATE TABLE IF NOT EXISTS bracket_picks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   bracket_id UUID NOT NULL REFERENCES brackets(id) ON DELETE CASCADE,
   match_id UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
@@ -112,10 +129,10 @@ CREATE TABLE bracket_picks (
   UNIQUE(bracket_id, match_id)
 );
 
-CREATE INDEX idx_bracket_picks_bracket ON bracket_picks(bracket_id);
+CREATE INDEX IF NOT EXISTS idx_bracket_picks_bracket ON bracket_picks(bracket_id);
 
 -- Actual results (admin-entered)
-CREATE TABLE actual_results (
+CREATE TABLE IF NOT EXISTS actual_results (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   league_id UUID NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
   match_id UUID NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
@@ -128,7 +145,7 @@ CREATE TABLE actual_results (
 );
 
 -- Punishments
-CREATE TABLE punishments (
+CREATE TABLE IF NOT EXISTS punishments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   league_id UUID NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
   description TEXT NOT NULL,
@@ -139,7 +156,7 @@ CREATE TABLE punishments (
 );
 
 -- Comments (trash talk wall)
-CREATE TABLE comments (
+CREATE TABLE IF NOT EXISTS comments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   league_id UUID NOT NULL REFERENCES leagues(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -147,25 +164,36 @@ CREATE TABLE comments (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_comments_league ON comments(league_id);
+CREATE INDEX IF NOT EXISTS idx_comments_league ON comments(league_id);
 
 -- Auto-create profile on signup
-CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
-  INSERT INTO profiles (id, email, display_name)
+  INSERT INTO public.profiles (id, email, display_name)
   VALUES (
     NEW.id,
-    NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1))
+    COALESCE(NEW.email, ''),
+    COALESCE(
+      NEW.raw_user_meta_data->>'display_name',
+      split_part(COALESCE(NEW.email, 'user'), '@', 1)
+    )
   );
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
+GRANT EXECUTE ON FUNCTION public.handle_new_user() TO service_role;
+GRANT EXECUTE ON FUNCTION public.handle_new_user() TO supabase_auth_admin;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- Updated_at trigger
 CREATE OR REPLACE FUNCTION update_updated_at()
@@ -176,14 +204,23 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS profiles_updated_at ON profiles;
 CREATE TRIGGER profiles_updated_at BEFORE UPDATE ON profiles
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS leagues_updated_at ON leagues;
 CREATE TRIGGER leagues_updated_at BEFORE UPDATE ON leagues
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS brackets_updated_at ON brackets;
 CREATE TRIGGER brackets_updated_at BEFORE UPDATE ON brackets
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS bracket_picks_updated_at ON bracket_picks;
 CREATE TRIGGER bracket_picks_updated_at BEFORE UPDATE ON bracket_picks
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS punishments_updated_at ON punishments;
 CREATE TRIGGER punishments_updated_at BEFORE UPDATE ON punishments
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
@@ -226,10 +263,12 @@ $$ LANGUAGE sql SECURITY DEFINER STABLE;
 CREATE OR REPLACE FUNCTION is_league_admin(p_league_id UUID)
 RETURNS BOOLEAN AS $$
   SELECT EXISTS (
+    SELECT 1 FROM leagues WHERE id = p_league_id AND admin_id = auth.uid()
+  ) OR EXISTS (
     SELECT 1 FROM league_members
     WHERE league_id = p_league_id AND user_id = auth.uid() AND role = 'admin'
   );
-$$ LANGUAGE sql SECURITY DEFINER STABLE;
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public;
 
 CREATE OR REPLACE FUNCTION is_bracket_locked(p_league_id UUID)
 RETURNS BOOLEAN AS $$
@@ -241,38 +280,86 @@ RETURNS BOOLEAN AS $$
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
 -- Profiles policies
+DROP POLICY IF EXISTS "Users can view all profiles" ON profiles;
 CREATE POLICY "Users can view all profiles" ON profiles FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
+CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
 CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 
 -- Leagues policies
-CREATE POLICY "Members can view their leagues" ON leagues FOR SELECT USING (is_league_member(id));
-CREATE POLICY "Authenticated users can create leagues" ON leagues FOR INSERT WITH CHECK (auth.uid() = admin_id);
-CREATE POLICY "Admins can update leagues" ON leagues FOR UPDATE USING (is_league_admin(id));
+DROP POLICY IF EXISTS "Members can view their leagues" ON leagues;
+DROP POLICY IF EXISTS "Creators and members can view leagues" ON leagues;
+CREATE POLICY "Creators and members can view leagues" ON leagues
+  FOR SELECT TO authenticated
+  USING (admin_id = auth.uid() OR is_league_member(id));
+
+DROP POLICY IF EXISTS "Authenticated users can create leagues" ON leagues;
+CREATE POLICY "Authenticated users can create leagues" ON leagues
+  FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() IS NOT NULL AND admin_id = auth.uid());
+
+DROP POLICY IF EXISTS "Admins can update leagues" ON leagues;
+DROP POLICY IF EXISTS "Creators and admins can update leagues" ON leagues;
+CREATE POLICY "Creators and admins can update leagues" ON leagues
+  FOR UPDATE TO authenticated
+  USING (admin_id = auth.uid() OR is_league_admin(id))
+  WITH CHECK (admin_id = auth.uid() OR is_league_admin(id));
+
+DROP POLICY IF EXISTS "Creators can delete leagues" ON leagues;
+CREATE POLICY "Creators can delete leagues" ON leagues
+  FOR DELETE TO authenticated
+  USING (admin_id = auth.uid());
 
 -- League members policies
-CREATE POLICY "Members can view league members" ON league_members FOR SELECT USING (is_league_member(league_id));
+DROP POLICY IF EXISTS "Members can view league members" ON league_members;
+CREATE POLICY "Members can view league members" ON league_members
+  FOR SELECT TO authenticated
+  USING (is_league_member(league_id) OR EXISTS (
+    SELECT 1 FROM leagues WHERE id = league_id AND admin_id = auth.uid()
+  ));
+
+DROP POLICY IF EXISTS "Users can join leagues" ON league_members;
 CREATE POLICY "Users can join leagues" ON league_members FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Admins can manage members" ON league_members;
 CREATE POLICY "Admins can manage members" ON league_members FOR DELETE USING (is_league_admin(league_id));
 
 -- Teams policies
+DROP POLICY IF EXISTS "Members can view teams" ON teams;
 CREATE POLICY "Members can view teams" ON teams FOR SELECT USING (is_league_member(league_id));
+
+DROP POLICY IF EXISTS "Admins can manage teams" ON teams;
 CREATE POLICY "Admins can manage teams" ON teams FOR ALL USING (is_league_admin(league_id));
 
 -- Matches policies
+DROP POLICY IF EXISTS "Members can view matches" ON matches;
 CREATE POLICY "Members can view matches" ON matches FOR SELECT USING (is_league_member(league_id));
+
+DROP POLICY IF EXISTS "Admins can manage matches" ON matches;
 CREATE POLICY "Admins can manage matches" ON matches FOR ALL USING (is_league_admin(league_id));
 
 -- Brackets policies
+DROP POLICY IF EXISTS "Members can view own bracket always" ON brackets;
 CREATE POLICY "Members can view own bracket always" ON brackets FOR SELECT
   USING (auth.uid() = user_id AND is_league_member(league_id));
+
+DROP POLICY IF EXISTS "Members can view others brackets when locked" ON brackets;
 CREATE POLICY "Members can view others brackets when locked" ON brackets FOR SELECT
   USING (auth.uid() != user_id AND is_league_member(league_id) AND is_bracket_locked(league_id));
+
+DROP POLICY IF EXISTS "Members can create own bracket" ON brackets;
 CREATE POLICY "Members can create own bracket" ON brackets FOR INSERT
   WITH CHECK (auth.uid() = user_id AND is_league_member(league_id));
+
+DROP POLICY IF EXISTS "Members can update own unlocked bracket" ON brackets;
 CREATE POLICY "Members can update own unlocked bracket" ON brackets FOR UPDATE
   USING (auth.uid() = user_id AND NOT is_bracket_locked(league_id));
 
 -- Bracket picks policies
+DROP POLICY IF EXISTS "View picks for visible brackets" ON bracket_picks;
 CREATE POLICY "View picks for visible brackets" ON bracket_picks FOR SELECT
   USING (EXISTS (
     SELECT 1 FROM brackets b
@@ -280,6 +367,8 @@ CREATE POLICY "View picks for visible brackets" ON bracket_picks FOR SELECT
     AND is_league_member(b.league_id)
     AND (b.user_id = auth.uid() OR is_bracket_locked(b.league_id))
   ));
+
+DROP POLICY IF EXISTS "Manage own picks when unlocked" ON bracket_picks;
 CREATE POLICY "Manage own picks when unlocked" ON bracket_picks FOR ALL
   USING (EXISTS (
     SELECT 1 FROM brackets b
@@ -289,14 +378,25 @@ CREATE POLICY "Manage own picks when unlocked" ON bracket_picks FOR ALL
   ));
 
 -- Actual results policies
+DROP POLICY IF EXISTS "Members can view results" ON actual_results;
 CREATE POLICY "Members can view results" ON actual_results FOR SELECT USING (is_league_member(league_id));
+
+DROP POLICY IF EXISTS "Admins can manage results" ON actual_results;
 CREATE POLICY "Admins can manage results" ON actual_results FOR ALL USING (is_league_admin(league_id));
 
 -- Punishments policies
+DROP POLICY IF EXISTS "Members can view punishment" ON punishments;
 CREATE POLICY "Members can view punishment" ON punishments FOR SELECT USING (is_league_member(league_id));
+
+DROP POLICY IF EXISTS "Admins can manage punishment" ON punishments;
 CREATE POLICY "Admins can manage punishment" ON punishments FOR ALL USING (is_league_admin(league_id));
 
 -- Comments policies
+DROP POLICY IF EXISTS "Members can view comments" ON comments;
 CREATE POLICY "Members can view comments" ON comments FOR SELECT USING (is_league_member(league_id));
+
+DROP POLICY IF EXISTS "Members can post comments" ON comments;
 CREATE POLICY "Members can post comments" ON comments FOR INSERT WITH CHECK (auth.uid() = user_id AND is_league_member(league_id));
+
+DROP POLICY IF EXISTS "Users can delete own comments" ON comments;
 CREATE POLICY "Users can delete own comments" ON comments FOR DELETE USING (auth.uid() = user_id);

@@ -8,9 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Trophy } from "lucide-react";
 
+type SignUpState = {
+  error?: string;
+  success?: boolean;
+  message?: string;
+} | null;
+
 export default function SignUpPage() {
   const [state, formAction, isPending] = useActionState(
-    async (_prev: { error?: string } | null, formData: FormData) => {
+    async (_prev: SignUpState, formData: FormData) => {
       return (await signUp(formData)) ?? null;
     },
     null
@@ -25,41 +31,54 @@ export default function SignUpPage() {
           <p className="text-sm text-zinc-500">Join the bracket punishment</p>
         </div>
 
-        <form action={formAction} className="space-y-4">
-          <div>
-            <label className="mb-1 block text-xs text-zinc-400">Display Name</label>
-            <Input name="displayName" required placeholder="Your nickname" />
+        {state?.success ? (
+          <div className="space-y-4 text-center">
+            <p className="text-sm text-emerald-400">{state.message}</p>
+            <Link href="/login">
+              <Button className="w-full">Go to Sign In</Button>
+            </Link>
           </div>
-          <div>
-            <label className="mb-1 block text-xs text-zinc-400">Email</label>
-            <Input name="email" type="email" required autoComplete="email" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-zinc-400">Password</label>
-            <Input
-              name="password"
-              type="password"
-              required
-              minLength={6}
-              autoComplete="new-password"
-            />
-          </div>
+        ) : (
+          <form action={formAction} className="space-y-4">
+            <div>
+              <label className="mb-1 block text-xs text-zinc-400">
+                Display Name
+              </label>
+              <Input name="displayName" required placeholder="Your nickname" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-zinc-400">Email</label>
+              <Input name="email" type="email" required autoComplete="email" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-zinc-400">Password</label>
+              <Input
+                name="password"
+                type="password"
+                required
+                minLength={6}
+                autoComplete="new-password"
+              />
+            </div>
 
-          {state?.error && (
-            <p className="text-sm text-red-400">{state.error}</p>
-          )}
+            {state?.error && (
+              <p className="text-sm text-red-400">{state.error}</p>
+            )}
 
-          <Button type="submit" className="w-full" disabled={isPending}>
-            {isPending ? "Creating account..." : "Sign Up"}
-          </Button>
-        </form>
+            <Button type="submit" className="w-full" disabled={isPending}>
+              {isPending ? "Creating account..." : "Sign Up"}
+            </Button>
+          </form>
+        )}
 
-        <p className="mt-4 text-center text-sm text-zinc-500">
-          Already have an account?{" "}
-          <Link href="/login" className="text-emerald-400 hover:underline">
-            Sign in
-          </Link>
-        </p>
+        {!state?.success && (
+          <p className="mt-4 text-center text-sm text-zinc-500">
+            Already have an account?{" "}
+            <Link href="/login" className="text-emerald-400 hover:underline">
+              Sign in
+            </Link>
+          </p>
+        )}
       </Card>
     </div>
   );
