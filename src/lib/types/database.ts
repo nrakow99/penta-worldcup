@@ -2,6 +2,12 @@ export type LeagueStatus = "open" | "locked" | "in_progress" | "finished";
 export type MemberRole = "admin" | "member";
 export type BracketRound = "r32" | "r16" | "qf" | "sf" | "final" | "champion";
 export type MatchSlot = "a" | "b";
+export type GroupMatchStatus = "upcoming" | "live" | "final";
+export type BracketAvailability =
+  | "waiting_for_matchups"
+  | "bracket_open"
+  | "bracket_locked"
+  | "tournament_in_progress";
 
 export interface Profile {
   id: string;
@@ -21,6 +27,7 @@ export interface League {
   lock_deadline: string | null;
   is_manually_locked: boolean;
   total_goals: number;
+  r32_ready: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -118,6 +125,59 @@ export interface Comment {
   content: string;
   created_at: string;
   profile?: Profile;
+}
+
+export interface WcGroup {
+  id: string;
+  league_id: string;
+  name: string;
+  created_at: string;
+}
+
+export interface GroupTeam {
+  id: string;
+  group_id: string;
+  team_id: string;
+  created_at: string;
+  team?: Team;
+}
+
+export interface GroupMatch {
+  id: string;
+  league_id: string;
+  group_id: string;
+  home_team_id: string;
+  away_team_id: string;
+  home_score: number | null;
+  away_score: number | null;
+  match_date: string | null;
+  status: GroupMatchStatus;
+  is_draw: boolean;
+  winner_team_id: string | null;
+  created_at: string;
+  updated_at: string;
+  home_team?: Team;
+  away_team?: Team;
+  winner?: Team | null;
+  group?: WcGroup;
+}
+
+export interface GroupStanding {
+  id: string;
+  group_id: string;
+  team_id: string;
+  played: number;
+  won: number;
+  drawn: number;
+  lost: number;
+  goals_for: number;
+  goals_against: number;
+  goal_difference: number;
+  points: number;
+  rank: number;
+  updated_at: string;
+  team?: Team;
+  group?: WcGroup;
 }
 
 export interface BracketScore {

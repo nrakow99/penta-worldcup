@@ -6,6 +6,18 @@ import {
   getLeaderboard,
   getComments,
 } from "@/lib/queries/league-queries";
+import {
+  getGroupStageData,
+  getUpcomingFixtures,
+  getR32Matches,
+} from "@/lib/queries/group-queries";
+import { canFillBracket } from "@/lib/tournament/bracket-status";
+import {
+  BracketStatusCard,
+  GroupStageTrackerCard,
+  UpcomingFixturesCard,
+  R32MatchupsCard,
+} from "@/components/league/dashboard-cards";
 import { Navbar, LeagueNav } from "@/components/layout/navbar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,7 +50,14 @@ export default async function LeagueDashboardPage({ params }: PageProps) {
   const { scores, worst, winner, punishmentRecipient } =
     await getLeaderboard(id);
   const comments = await getComments(id);
+  const [{ groups, matches: groupMatches }, upcoming, r32Matches] =
+    await Promise.all([
+      getGroupStageData(id),
+      getUpcomingFixtures(id, 5),
+      getR32Matches(id),
+    ]);
 
+  const bracketOpen = canFillBracket(league);
   const showConfetti = league.status === "finished";
 
   return (
@@ -70,10 +89,19 @@ export default async function LeagueDashboardPage({ params }: PageProps) {
 
             <Leaderboard scores={scores} highlightUserId={user.id} />
 
-            {!isLocked && (
+            {bracketOpen && (
               <Link href={`/league/${id}/bracket`}>
                 <Button className="w-full">Fill Out Your Bracket</Button>
               </Link>
+            )}
+
+            {!bracketOpen && !isLocked && (
+              <Card variant="warning">
+                <p className="text-sm text-amber-300">
+                  Bracket not open yet — waiting for Round of 32 matchups to be
+                  confirmed by admin.
+                </p>
+              </Card>
             )}
 
             {isLocked && (
@@ -108,6 +136,15 @@ export default async function LeagueDashboardPage({ params }: PageProps) {
           </div>
 
           <div className="space-y-4">
+            <BracketStatusCard league={league} />
+            <GroupStageTrackerCard
+              leagueId={id}
+              groupCount={groups.length}
+              matchCount={groupMatches.length}
+            />
+            <UpcomingFixturesCard leagueId={id} fixtures={upcoming} />
+            <R32MatchupsCard matches={r32Matches} />
+
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">

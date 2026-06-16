@@ -205,6 +205,10 @@ export async function saveBracketPicks(
 
   if (!league) return { error: "League not found" };
 
+  if (!league.r32_ready) {
+    return { error: "Bracket not open yet — waiting for Round of 32 matchups" };
+  }
+
   const isLocked =
     league.is_manually_locked ||
     (league.lock_deadline && new Date(league.lock_deadline) <= new Date());

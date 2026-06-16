@@ -43,8 +43,17 @@ export function LeagueNav({
 }) {
   const links = [
     { href: `/league/${leagueId}`, label: "Dashboard" },
+    { href: `/league/${leagueId}/groups`, label: "Groups" },
     { href: `/league/${leagueId}/bracket`, label: "My Bracket" },
-    ...(isAdmin ? [{ href: `/league/${leagueId}/admin`, label: "Admin" }] : []),
+    ...(isAdmin
+      ? [
+          { href: `/league/${leagueId}/admin`, label: "Admin" },
+          {
+            href: `/league/${leagueId}/admin/knockout-setup`,
+            label: "Knockout Setup",
+          },
+        ]
+      : []),
   ];
 
   return (

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import {
   updateLeagueSettings,
@@ -33,6 +34,23 @@ export function AdminPanel({
 
   return (
     <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Group Stage & Knockout</CardTitle>
+        </CardHeader>
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/league/${league.id}/groups`}>
+            <Button size="sm" variant="secondary">
+              Manage Group Stage
+            </Button>
+          </Link>
+          <Link href={`/league/${league.id}/admin/knockout-setup`}>
+            <Button size="sm" variant="secondary">
+              Knockout Setup
+            </Button>
+          </Link>
+        </div>
+      </Card>
       <LeagueSettingsForm league={league} isPending={isPending} startTransition={startTransition} />
       <PunishmentForm
         leagueId={league.id}

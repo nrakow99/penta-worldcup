@@ -68,7 +68,10 @@ export async function getLeagueDetails(leagueId: string, userId: string) {
   );
 
   return {
-    league: league as League,
+    league: {
+      ...(league as League),
+      r32_ready: (league as League).r32_ready ?? false,
+    },
     members: (members ?? []) as LeagueMember[],
     punishment: punishment as Punishment | null,
     isAdmin: !!isAdmin,
