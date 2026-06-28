@@ -1,0 +1,18 @@
+{
+  "fixtures": [
+    {
+      "group_name": "A",
+      "home_team": "USA",
+      "away_team": "Mexico",
+      "match_date": "2026-06-15T18:00:00Z",
+      "status": "upcoming"
+    },
+    {
+      "group_name": "A",
+      "home_team": "Canada",
+      "away_team": "Jamaica",
+      "match_date": "2026-06-16T20:00:00Z",
+      "status": "upcoming"
+    }
+  ]
+}

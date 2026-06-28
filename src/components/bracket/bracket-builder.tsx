@@ -29,7 +29,7 @@ export function BracketBuilder({
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
 
   const handlePick = useCallback(
-    (matchId: string, teamId: string, round: BracketRound) => {
+    (matchId: string, teamId: string, _round: BracketRound) => {
       if (isLocked) return;
       setPicks((prev) => cascadePick(prev, matchId, teamId, matches));
       setSaveStatus("idle");

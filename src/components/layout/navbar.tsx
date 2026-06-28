@@ -49,8 +49,12 @@ export function LeagueNav({
       ? [
           { href: `/league/${leagueId}/admin`, label: "Admin" },
           {
+            href: `/league/${leagueId}/admin/tournament-update`,
+            label: "Update",
+          },
+          {
             href: `/league/${leagueId}/admin/knockout-setup`,
-            label: "Knockout Setup",
+            label: "Knockout",
           },
         ]
       : []),

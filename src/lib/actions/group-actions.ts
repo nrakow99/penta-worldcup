@@ -86,7 +86,7 @@ export async function upsertGroupMatch(
 
   let isDraw = false;
   let winnerTeamId: string | null = null;
-  let status = data.status ?? "upcoming";
+  const status = data.status ?? "upcoming";
 
   if (
     data.homeScore != null &&
@@ -114,6 +114,7 @@ export async function upsertGroupMatch(
     away_score: data.awayScore ?? null,
     is_draw: isDraw,
     winner_team_id: winnerTeamId,
+    is_manual_override: true,
   };
 
   if (data.id) {
@@ -165,6 +166,7 @@ export async function markGroupMatchFinal(
       status: "final",
       is_draw: result.isDraw,
       winner_team_id: result.winnerTeamId,
+      is_manual_override: true,
     })
     .eq("id", matchId);
 

@@ -1,0 +1,8 @@
+{
+  "teams": [
+    { "name": "USA", "short_name": "USA", "flag_emoji": "🇺🇸", "group_name": "A" },
+    { "name": "Mexico", "short_name": "MEX", "flag_emoji": "🇲🇽", "group_name": "A" },
+    { "name": "Canada", "short_name": "CAN", "flag_emoji": "🇨🇦", "group_name": "A" },
+    { "name": "Jamaica", "short_name": "JAM", "flag_emoji": "🇯🇲", "group_name": "A" }
+  ]
+}

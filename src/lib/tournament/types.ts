@@ -2,7 +2,6 @@ import type {
   GroupMatch,
   GroupStanding,
   GroupTeam,
-  League,
   WcGroup,
 } from "@/lib/types/database";
 

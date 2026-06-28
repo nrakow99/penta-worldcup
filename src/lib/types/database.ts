@@ -28,6 +28,7 @@ export interface League {
   is_manually_locked: boolean;
   total_goals: number;
   r32_ready: boolean;
+  last_synced_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -49,6 +50,7 @@ export interface Team {
   flag_emoji: string | null;
   is_placeholder: boolean;
   placeholder_label: string | null;
+  api_team_id: number | null;
   created_at: string;
 }
 
@@ -154,6 +156,8 @@ export interface GroupMatch {
   status: GroupMatchStatus;
   is_draw: boolean;
   winner_team_id: string | null;
+  api_fixture_id: number | null;
+  is_manual_override: boolean;
   created_at: string;
   updated_at: string;
   home_team?: Team;
@@ -178,6 +182,19 @@ export interface GroupStanding {
   updated_at: string;
   team?: Team;
   group?: WcGroup;
+}
+
+export type ApiSyncStatus = "success" | "error" | "partial";
+export type ApiSyncType = "full" | "teams" | "fixtures" | "standings";
+
+export interface ApiSyncLog {
+  id: string;
+  league_id: string;
+  sync_type: ApiSyncType;
+  status: ApiSyncStatus;
+  calls_used: number;
+  message: string | null;
+  created_at: string;
 }
 
 export interface BracketScore {

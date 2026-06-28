@@ -8,10 +8,7 @@ export function CountdownTimer({ deadline }: { deadline: string | null }) {
   const [isExpired, setIsExpired] = useState(false);
 
   useEffect(() => {
-    if (!deadline) {
-      setTimeLeft("No deadline set");
-      return;
-    }
+    if (!deadline) return;
 
     const update = () => {
       const target = new Date(deadline);

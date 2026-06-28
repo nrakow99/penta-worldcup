@@ -1,7 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getLeagueDetails, getLeagueBracketData } from "@/lib/queries/league-queries";
-import { getGroupStageData, getUpcomingFixtures } from "@/lib/queries/group-queries";
+import { getGroupStageData } from "@/lib/queries/group-queries";
 import { Navbar, LeagueNav } from "@/components/layout/navbar";
 import { GroupStageTabs } from "@/components/groups/group-stage-tabs";
 

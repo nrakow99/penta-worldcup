@@ -285,7 +285,7 @@ function MatchSetup({
   leagueId,
   matches,
   teams,
-  isPending,
+  isPending: _isPending,
   startTransition,
 }: {
   leagueId: string;
@@ -432,7 +432,7 @@ function ResultsEntry({
 function ResultForm({
   leagueId,
   match,
-  teams,
+  teams: _teams,
   teamMap,
   isPending,
   startTransition,

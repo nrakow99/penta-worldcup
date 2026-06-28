@@ -57,7 +57,6 @@ export function BracketTree({
                     teamMap
                   );
                   const pick = picksByMatch.get(match.id);
-                  const hasResult = match.winner_team_id !== null;
                   const isCorrect =
                     showResults &&
                     !!pick?.picked_team_id &&
@@ -126,7 +125,7 @@ export function BracketTree({
 
 function TeamSlot({
   label,
-  team,
+  team: _team,
   isPicked,
   isWinner,
   isCorrect,

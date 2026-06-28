@@ -1,0 +1,20 @@
+{
+  "results": [
+    {
+      "group_name": "A",
+      "home_team": "USA",
+      "away_team": "Mexico",
+      "home_score": 2,
+      "away_score": 1,
+      "match_date": "2026-06-15T18:00:00Z"
+    },
+    {
+      "group_name": "A",
+      "home_team": "Canada",
+      "away_team": "Jamaica",
+      "home_score": 1,
+      "away_score": 1,
+      "match_date": "2026-06-16T20:00:00Z"
+    }
+  ]
+}
