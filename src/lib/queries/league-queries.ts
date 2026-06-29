@@ -71,7 +71,6 @@ export async function getLeagueDetails(leagueId: string, userId: string) {
     league: {
       ...(league as League),
       r32_ready: (league as League).r32_ready ?? false,
-      last_synced_at: (league as League).last_synced_at ?? null,
     },
     members: (members ?? []) as LeagueMember[],
     punishment: punishment as Punishment | null,

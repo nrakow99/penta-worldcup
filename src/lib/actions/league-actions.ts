@@ -649,21 +649,6 @@ export async function deleteLeague(leagueId: string) {
   await supabase.from("actual_results").delete().eq("league_id", leagueId);
   await supabase.from("comments").delete().eq("league_id", leagueId);
   await supabase.from("punishments").delete().eq("league_id", leagueId);
-  await supabase.from("api_sync_logs").delete().eq("league_id", leagueId);
-
-  // Group-stage tables (safe no-ops if league never used group stage)
-  const { data: groups } = await supabase
-    .from("groups")
-    .select("id")
-    .eq("league_id", leagueId);
-  if (groups && groups.length > 0) {
-    const gids = groups.map((g) => g.id as string);
-    await supabase.from("group_standings").delete().in("group_id", gids);
-    await supabase.from("group_teams").delete().in("group_id", gids);
-  }
-  await supabase.from("group_matches").delete().eq("league_id", leagueId);
-  await supabase.from("groups").delete().eq("league_id", leagueId);
-
   await supabase.from("brackets").delete().eq("league_id", leagueId);
   await supabase.from("matches").delete().eq("league_id", leagueId);
   await supabase.from("teams").delete().eq("league_id", leagueId);

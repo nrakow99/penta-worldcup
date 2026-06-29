@@ -2,7 +2,6 @@ export type LeagueStatus = "open" | "locked" | "in_progress" | "finished";
 export type MemberRole = "admin" | "member";
 export type BracketRound = "r32" | "r16" | "qf" | "sf" | "final" | "champion";
 export type MatchSlot = "a" | "b";
-export type GroupMatchStatus = "upcoming" | "live" | "final";
 export type BracketAvailability =
   | "waiting_for_matchups"
   | "bracket_open"
@@ -28,7 +27,6 @@ export interface League {
   is_manually_locked: boolean;
   total_goals: number;
   r32_ready: boolean;
-  last_synced_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -50,7 +48,6 @@ export interface Team {
   flag_emoji: string | null;
   is_placeholder: boolean;
   placeholder_label: string | null;
-  api_team_id: number | null;
   created_at: string;
 }
 
@@ -127,74 +124,6 @@ export interface Comment {
   content: string;
   created_at: string;
   profile?: Profile;
-}
-
-export interface WcGroup {
-  id: string;
-  league_id: string;
-  name: string;
-  created_at: string;
-}
-
-export interface GroupTeam {
-  id: string;
-  group_id: string;
-  team_id: string;
-  created_at: string;
-  team?: Team;
-}
-
-export interface GroupMatch {
-  id: string;
-  league_id: string;
-  group_id: string;
-  home_team_id: string;
-  away_team_id: string;
-  home_score: number | null;
-  away_score: number | null;
-  match_date: string | null;
-  status: GroupMatchStatus;
-  is_draw: boolean;
-  winner_team_id: string | null;
-  api_fixture_id: number | null;
-  is_manual_override: boolean;
-  created_at: string;
-  updated_at: string;
-  home_team?: Team;
-  away_team?: Team;
-  winner?: Team | null;
-  group?: WcGroup;
-}
-
-export interface GroupStanding {
-  id: string;
-  group_id: string;
-  team_id: string;
-  played: number;
-  won: number;
-  drawn: number;
-  lost: number;
-  goals_for: number;
-  goals_against: number;
-  goal_difference: number;
-  points: number;
-  rank: number;
-  updated_at: string;
-  team?: Team;
-  group?: WcGroup;
-}
-
-export type ApiSyncStatus = "success" | "error" | "partial";
-export type ApiSyncType = "full" | "teams" | "fixtures" | "standings";
-
-export interface ApiSyncLog {
-  id: string;
-  league_id: string;
-  sync_type: ApiSyncType;
-  status: ApiSyncStatus;
-  calls_used: number;
-  message: string | null;
-  created_at: string;
 }
 
 export interface BracketScore {
