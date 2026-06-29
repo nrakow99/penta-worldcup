@@ -31,8 +31,9 @@ export default async function AdminPage({ params }: PageProps) {
     redirect(`/league/${id}`);
   }
 
-  const { matches, teams } = await getLeagueBracketData(id);
+  const { matches, teams, brackets } = await getLeagueBracketData(id);
   const syncStatus = await getSyncStatus(id);
+  const submittedCount = brackets.filter((b) => b.is_complete).length;
 
   return (
     <div className="min-h-full bg-zinc-950">
@@ -70,6 +71,8 @@ export default async function AdminPage({ params }: PageProps) {
             punishment={details.punishment}
             matches={matches}
             teams={teams}
+            submittedCount={submittedCount}
+            memberCount={details.members.length}
           />
         </div>
       </main>

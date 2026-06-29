@@ -6,6 +6,35 @@ import { createClient } from "@/lib/supabase/server";
 import { generateInviteCode } from "@/lib/utils/invite-code";
 import { createDefaultMatches, getNextMatchLink } from "@/lib/bracket/bracket-utils";
 
+// ─── Shared admin guard ──────────────────────────────────────────────────────
+
+async function requireLeagueAdmin(leagueId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" as const, supabase, user: null };
+
+  const { data: league } = await supabase
+    .from("leagues")
+    .select("admin_id")
+    .eq("id", leagueId)
+    .single();
+  if (!league) return { error: "League not found" as const, supabase, user: null };
+
+  const { data: member } = await supabase
+    .from("league_members")
+    .select("role")
+    .eq("league_id", leagueId)
+    .eq("user_id", user.id)
+    .single();
+
+  const isAdmin = member?.role === "admin" || league.admin_id === user.id;
+  if (!isAdmin) return { error: "Not authorized" as const, supabase, user: null };
+
+  return { error: null, supabase, user };
+}
+
 export async function signUp(formData: FormData) {
   const supabase = await createClient();
   const email = formData.get("email") as string;
@@ -197,35 +226,45 @@ export async function saveBracketPicks(
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
 
+  // Verify the bracket belongs to this user
+  const { data: bracket } = await supabase
+    .from("brackets")
+    .select("user_id")
+    .eq("id", bracketId)
+    .eq("league_id", leagueId)
+    .single();
+
+  if (!bracket) return { error: "Bracket not found" };
+  if (bracket.user_id !== user.id) return { error: "Not your bracket" };
+
   const { data: league } = await supabase
     .from("leagues")
-    .select("*")
+    .select("r32_ready, is_manually_locked, lock_deadline")
     .eq("id", leagueId)
     .single();
 
   if (!league) return { error: "League not found" };
-
-  if (!league.r32_ready) {
-    return { error: "Bracket not open yet — waiting for Round of 32 matchups" };
-  }
+  if (!league.r32_ready) return { error: "Bracket not open yet" };
 
   const isLocked =
     league.is_manually_locked ||
     (league.lock_deadline && new Date(league.lock_deadline) <= new Date());
-
   if (isLocked) return { error: "Bracket is locked" };
 
-  for (const pick of picks) {
-    await supabase.from("bracket_picks").upsert(
-      {
-        bracket_id: bracketId,
-        match_id: pick.matchId,
-        picked_team_id: pick.teamId,
-        round: pick.round as "r32" | "r16" | "qf" | "sf" | "final" | "champion",
-      },
-      { onConflict: "bracket_id,match_id" }
-    );
-  }
+  if (picks.length === 0) return { success: true };
+
+  // Batch upsert — single DB round trip
+  const { error } = await supabase.from("bracket_picks").upsert(
+    picks.map((p) => ({
+      bracket_id: bracketId,
+      match_id: p.matchId,
+      picked_team_id: p.teamId,
+      round: p.round as "r32" | "r16" | "qf" | "sf" | "final" | "champion",
+    })),
+    { onConflict: "bracket_id,match_id" }
+  );
+
+  if (error) return { error: error.message };
 
   revalidatePath(`/league/${leagueId}/bracket`);
   return { success: true };
@@ -257,7 +296,8 @@ export async function updateLeagueSettings(
     status?: string;
   }
 ) {
-  const supabase = await createClient();
+  const { error: authError, supabase } = await requireLeagueAdmin(leagueId);
+  if (authError) return { error: authError };
 
   const { error } = await supabase
     .from("leagues")
@@ -331,11 +371,8 @@ export async function recordMatchResult(
   teamAScore: number,
   teamBScore: number
 ) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not authenticated" };
+  const { error: authError, supabase, user } = await requireLeagueAdmin(leagueId);
+  if (authError || !user) return { error: authError ?? "Not authorized" };
 
   await supabase
     .from("matches")
@@ -389,7 +426,8 @@ export async function upsertTeam(
     placeholderLabel?: string;
   }
 ) {
-  const supabase = await createClient();
+  const { error: authError, supabase } = await requireLeagueAdmin(leagueId);
+  if (authError) return { error: authError };
 
   if (team.id) {
     const { error } = await supabase
@@ -429,7 +467,8 @@ export async function updateMatchTeams(
     teamBPlaceholder?: string;
   }
 ) {
-  const supabase = await createClient();
+  const { error: authError, supabase } = await requireLeagueAdmin(leagueId);
+  if (authError) return { error: authError };
 
   const { error } = await supabase
     .from("matches")
@@ -448,7 +487,8 @@ export async function updateMatchTeams(
 }
 
 export async function resetBracketData(leagueId: string) {
-  const supabase = await createClient();
+  const { error: authError, supabase } = await requireLeagueAdmin(leagueId);
+  if (authError) return { error: authError };
 
   const { data: brackets } = await supabase
     .from("brackets")

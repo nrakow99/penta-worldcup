@@ -68,6 +68,7 @@ export default async function MyBracketPage({ params }: PageProps) {
               initialPicks={userBracket.picks}
               teams={teams}
               isLocked={details.isLocked || !canEdit}
+              lockDeadline={details.league.lock_deadline}
             />
           )}
         </div>
