@@ -5,6 +5,12 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { generateInviteCode } from "@/lib/utils/invite-code";
 import { createDefaultMatches, getNextMatchLink } from "@/lib/bracket/bracket-utils";
+import {
+  canFillBracket,
+  getBracketState,
+  normalizeLeague,
+} from "@/lib/tournament/bracket-status";
+import type { League } from "@/lib/types/database";
 // Type alias for the Supabase client — avoids re-importing the function
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
@@ -375,19 +381,20 @@ export async function saveBracketPicks(
   if (!bracket) return { error: "Bracket not found" };
   if (bracket.user_id !== user.id) return { error: "Not your bracket" };
 
-  const { data: league } = await supabase
+  const { data: leagueRaw } = await supabase
     .from("leagues")
-    .select("r32_ready, is_manually_locked, lock_deadline")
+    .select("*")
     .eq("id", leagueId)
     .single();
 
-  if (!league) return { error: "League not found" };
-  if (!league.r32_ready) return { error: "Bracket not open yet" };
+  if (!leagueRaw) return { error: "League not found" };
 
-  const isLocked =
-    league.is_manually_locked ||
-    (league.lock_deadline && new Date(league.lock_deadline) <= new Date());
-  if (isLocked) return { error: "Bracket is locked" };
+  const league = normalizeLeague(leagueRaw as League);
+  if (!canFillBracket(league)) {
+    const state = getBracketState(league);
+    if (state === "not_open") return { error: "Bracket not open yet" };
+    return { error: "Bracket is locked" };
+  }
 
   if (picks.length === 0) return { success: true };
 
@@ -457,6 +464,26 @@ export async function updateLeagueSettings(
   }
 
   revalidatePath(`/league/${leagueId}`);
+  revalidatePath(`/league/${leagueId}/admin`);
+  return { success: true };
+}
+
+export async function setBracketOpen(leagueId: string, open: boolean) {
+  const { error: authError, supabase } = await requireLeagueAdmin(leagueId);
+  if (authError) return { error: authError };
+
+  const { error } = await supabase
+    .from("leagues")
+    .update({
+      bracket_open: open,
+      ...(open ? { status: "open" as const } : {}),
+    })
+    .eq("id", leagueId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/league/${leagueId}`);
+  revalidatePath(`/league/${leagueId}/bracket`);
   revalidatePath(`/league/${leagueId}/admin`);
   return { success: true };
 }

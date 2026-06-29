@@ -1,12 +1,8 @@
+export type BracketState = "not_open" | "open" | "locked";
 export type LeagueStatus = "open" | "locked" | "in_progress" | "finished";
 export type MemberRole = "admin" | "member";
 export type BracketRound = "r32" | "r16" | "qf" | "sf" | "final" | "champion";
 export type MatchSlot = "a" | "b";
-export type BracketAvailability =
-  | "waiting_for_matchups"
-  | "bracket_open"
-  | "bracket_locked"
-  | "tournament_in_progress";
 
 export interface Profile {
   id: string;
@@ -26,7 +22,7 @@ export interface League {
   lock_deadline: string | null;
   is_manually_locked: boolean;
   total_goals: number;
-  r32_ready: boolean;
+  bracket_open: boolean;
   created_at: string;
   updated_at: string;
 }

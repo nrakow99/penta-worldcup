@@ -7,8 +7,8 @@ import {
   setPunishment,
   resetBracketData,
   deleteLeague,
+  setBracketOpen,
 } from "@/lib/actions/league-actions";
-import { setR32Ready } from "@/lib/actions/group-actions";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Trash2 } from "lucide-react";
@@ -53,16 +53,16 @@ export function AdminPanel({
       <StepCard
         step={2}
         title="Open Bracket for Players"
-        done={league.r32_ready}
+        done={league.bracket_open}
         status={
-          league.r32_ready
+          league.bracket_open
             ? `Open · ${submittedCount}/${memberCount} brackets submitted`
             : "Players see \u201CBracket not open yet\u201D until you open it"
         }
       >
         <OpenBracketControl
           leagueId={league.id}
-          r32Ready={league.r32_ready}
+          bracketOpen={league.bracket_open}
           isPending={isPending}
           startTransition={startTransition}
         />
@@ -261,16 +261,16 @@ function LockDeadlineForm({
 
 function OpenBracketControl({
   leagueId,
-  r32Ready,
+  bracketOpen,
   isPending,
   startTransition,
 }: {
   leagueId: string;
-  r32Ready: boolean;
+  bracketOpen: boolean;
   isPending: boolean;
   startTransition: (fn: () => void) => void;
 }) {
-  if (r32Ready) {
+  if (bracketOpen) {
     return (
       <div className="flex items-center justify-between rounded-lg border border-emerald-800/50 bg-emerald-950/30 px-4 py-3">
         <div>
@@ -289,7 +289,7 @@ function OpenBracketControl({
                 "Close the bracket? Players will see \"Bracket not open yet\" again."
               )
             ) {
-              startTransition(() => void setR32Ready(leagueId, false));
+              startTransition(() => void setBracketOpen(leagueId, false));
             }
           }}
         >
@@ -303,7 +303,7 @@ function OpenBracketControl({
     <Button
       disabled={isPending}
       onClick={() => {
-        startTransition(() => void setR32Ready(leagueId, true));
+        startTransition(() => void setBracketOpen(leagueId, true));
       }}
     >
       Open Bracket for Players

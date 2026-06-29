@@ -10,7 +10,11 @@ import { Navbar, LeagueNav } from "@/components/layout/navbar";
 import { BracketBuilder } from "@/components/bracket/bracket-builder";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { canFillBracket, getBracketAvailability, BRACKET_STATUS_LABELS } from "@/lib/tournament/bracket-status";
+import {
+  canFillBracket,
+  getBracketState,
+  BRACKET_STATE_LABELS,
+} from "@/lib/tournament/bracket-status";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -42,7 +46,7 @@ export default async function MyBracketPage({ params }: PageProps) {
 
   if (!userBracket) notFound();
 
-  const availability = getBracketAvailability(details.league);
+  const bracketState = getBracketState(details.league);
   const canEdit = canFillBracket(details.league);
 
   return (
@@ -66,17 +70,17 @@ export default async function MyBracketPage({ params }: PageProps) {
                 <Button>Set Display Name</Button>
               </Link>
             </Card>
-          ) : !canEdit && !details.isLocked ? (
+          ) : bracketState === "not_open" ? (
             <Card className="py-12 text-center">
               <p className="text-lg font-medium text-amber-300">
                 Bracket not open yet
               </p>
               <p className="mt-2 text-sm text-zinc-500">
-                Status: {BRACKET_STATUS_LABELS[availability]}
+                Status: {BRACKET_STATE_LABELS[bracketState]}
               </p>
               <p className="mt-1 text-sm text-zinc-500">
-              The admin will open the bracket when it&apos;s ready.
-            </p>
+                The admin will open the bracket when it&apos;s ready.
+              </p>
             </Card>
           ) : (
             <BracketBuilder

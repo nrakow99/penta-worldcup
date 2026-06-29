@@ -1,33 +1,60 @@
-import type { BracketAvailability, League } from "@/lib/types/database";
-import { isLeagueLocked } from "@/lib/scoring/calculate-score";
+import type { League } from "@/lib/types/database";
 
-export function getBracketAvailability(league: League): BracketAvailability {
-  if (league.status === "in_progress" || league.status === "finished") {
-    return "tournament_in_progress";
-  }
-  if (isLeagueLocked(league)) {
-    return "bracket_locked";
-  }
-  if (!league.r32_ready) {
-    return "waiting_for_matchups";
-  }
-  return "bracket_open";
+/** Player-facing bracket lifecycle — not_open → open → locked */
+export type BracketState = "not_open" | "open" | "locked";
+
+type LeagueRow = League & { r32_ready?: boolean };
+
+/** Read bracket_open from DB, with fallback for unmigrated r32_ready column. */
+export function isBracketOpen(league: LeagueRow): boolean {
+  if (league.bracket_open === true) return true;
+  if (league.r32_ready === true) return true;
+  return false;
 }
 
-export const BRACKET_STATUS_LABELS: Record<BracketAvailability, string> = {
-  waiting_for_matchups: "Not open yet",
-  bracket_open: "Bracket open",
-  bracket_locked: "Bracket locked",
-  tournament_in_progress: "Tournament in progress",
+/**
+ * Single source of truth for whether players can fill out brackets.
+ *
+ * 1. not_open — admin has not opened the bracket yet
+ * 2. open      — bracket is open and picks are still allowed
+ * 3. locked    — bracket was open but deadline passed or admin locked manually
+ */
+export function getBracketState(league: LeagueRow): BracketState {
+  if (!isBracketOpen(league)) {
+    return "not_open";
+  }
+
+  if (league.is_manually_locked) {
+    return "locked";
+  }
+
+  if (league.lock_deadline && new Date(league.lock_deadline) <= new Date()) {
+    return "locked";
+  }
+
+  return "open";
+}
+
+export const BRACKET_STATE_LABELS: Record<BracketState, string> = {
+  not_open: "Not open yet",
+  open: "Bracket open",
+  locked: "Bracket locked",
 };
 
-export const BRACKET_STATUS_COLORS: Record<BracketAvailability, string> = {
-  waiting_for_matchups: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-  bracket_open: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  bracket_locked: "bg-zinc-500/20 text-zinc-400 border-zinc-500/30",
-  tournament_in_progress: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+export const BRACKET_STATE_COLORS: Record<BracketState, string> = {
+  not_open: "border-amber-700 bg-amber-950/40 text-amber-300",
+  open: "border-emerald-700 bg-emerald-950/40 text-emerald-300",
+  locked: "border-zinc-600 bg-zinc-800/40 text-zinc-300",
 };
 
-export function canFillBracket(league: League): boolean {
-  return getBracketAvailability(league) === "bracket_open";
+export function canFillBracket(league: LeagueRow): boolean {
+  return getBracketState(league) === "open";
+}
+
+/** Normalize a raw Supabase leagues row into a League with bracket_open set. */
+export function normalizeLeague<T extends LeagueRow>(league: T): League {
+  return {
+    ...league,
+    bracket_open: isBracketOpen(league),
+  };
 }

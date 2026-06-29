@@ -2,7 +2,12 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getLeagueDetails, getLeaderboard, getComments } from "@/lib/queries/league-queries";
-import { canFillBracket, getBracketAvailability } from "@/lib/tournament/bracket-status";
+import {
+  canFillBracket,
+  getBracketState,
+  BRACKET_STATE_LABELS,
+  BRACKET_STATE_COLORS,
+} from "@/lib/tournament/bracket-status";
 import { Navbar, LeagueNav } from "@/components/layout/navbar";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,19 +23,8 @@ interface PageProps {
   params: Promise<{ id: string }>;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  waiting_for_matchups: "Not open yet",
-  bracket_open: "Bracket open",
-  bracket_locked: "Bracket locked",
-  tournament_in_progress: "Tournament live",
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  waiting_for_matchups: "border-amber-700 bg-amber-950/40 text-amber-300",
-  bracket_open: "border-emerald-700 bg-emerald-950/40 text-emerald-300",
-  bracket_locked: "border-zinc-600 bg-zinc-800/40 text-zinc-300",
-  tournament_in_progress: "border-indigo-700 bg-indigo-950/40 text-indigo-300",
-};
+const STATUS_LABELS = BRACKET_STATE_LABELS;
+const STATUS_COLORS = BRACKET_STATE_COLORS;
 
 export default async function LeagueDashboardPage({ params }: PageProps) {
   const { id } = await params;
@@ -48,8 +42,8 @@ export default async function LeagueDashboardPage({ params }: PageProps) {
   const { scores, worst, winner, punishmentRecipient } = await getLeaderboard(id);
   const comments = await getComments(id);
 
-  const bracketOpen = canFillBracket(league);
-  const availability = getBracketAvailability(league);
+  const bracketState = getBracketState(league);
+  const canFill = canFillBracket(league);
   const showConfetti = league.status === "finished";
 
   const myMember = members.find((m) => m.user_id === user.id);
@@ -78,9 +72,9 @@ export default async function LeagueDashboardPage({ params }: PageProps) {
                   </p>
                 </div>
                 <span
-                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${STATUS_COLORS[availability] ?? "border-zinc-700 text-zinc-400"}`}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${STATUS_COLORS[bracketState]}`}
                 >
-                  {STATUS_LABELS[availability] ?? availability}
+                  {STATUS_LABELS[bracketState]}
                 </span>
               </div>
 
@@ -97,7 +91,7 @@ export default async function LeagueDashboardPage({ params }: PageProps) {
             </div>
 
             {/* Primary CTA */}
-            {bracketOpen && !isLocked && (
+            {canFill && (
               <Link href={`/league/${id}/bracket`}>
                 <Button className="w-full py-3 text-base">
                   Fill Out Your Bracket →
@@ -105,7 +99,7 @@ export default async function LeagueDashboardPage({ params }: PageProps) {
               </Link>
             )}
 
-            {isLocked && (
+            {bracketState === "locked" && (
               <Link href={`/league/${id}/bracket`}>
                 <Button variant="secondary" className="w-full">
                   View My Bracket
@@ -113,7 +107,7 @@ export default async function LeagueDashboardPage({ params }: PageProps) {
               </Link>
             )}
 
-            {!bracketOpen && !isLocked && (
+            {bracketState === "not_open" && (
               <div className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-4 py-3">
                 <p className="text-sm font-medium text-amber-300">
                   Bracket not open yet
@@ -128,7 +122,7 @@ export default async function LeagueDashboardPage({ params }: PageProps) {
             <Leaderboard scores={scores} highlightUserId={user.id} />
 
             {/* View other brackets (after lock) */}
-            {isLocked && members.length > 0 && (
+            {bracketState === "locked" && members.length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle>View Brackets</CardTitle>

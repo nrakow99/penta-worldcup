@@ -2,8 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import {
   calculateBracketScore,
   rankBrackets,
-  isLeagueLocked,
 } from "@/lib/scoring/calculate-score";
+import { normalizeLeague, getBracketState } from "@/lib/tournament/bracket-status";
 import {
   determinePunishmentRecipient,
   determineWinner,
@@ -68,14 +68,11 @@ export async function getLeagueDetails(leagueId: string, userId: string) {
   );
 
   return {
-    league: {
-      ...(league as League),
-      r32_ready: (league as League).r32_ready ?? false,
-    },
+    league: normalizeLeague(league as League),
     members: (members ?? []) as LeagueMember[],
     punishment: punishment as Punishment | null,
     isAdmin: !!isAdmin,
-    isLocked: isLeagueLocked(league as League),
+    isLocked: getBracketState(normalizeLeague(league as League)) === "locked",
   };
 }
 
