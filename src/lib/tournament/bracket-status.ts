@@ -15,7 +15,7 @@ export function getBracketAvailability(league: League): BracketAvailability {
 }
 
 export const BRACKET_STATUS_LABELS: Record<BracketAvailability, string> = {
-  waiting_for_matchups: "Waiting for matchups",
+  waiting_for_matchups: "Not open yet",
   bracket_open: "Bracket open",
   bracket_locked: "Bracket locked",
   tournament_in_progress: "Tournament in progress",
@@ -30,8 +30,4 @@ export const BRACKET_STATUS_COLORS: Record<BracketAvailability, string> = {
 
 export function canFillBracket(league: League): boolean {
   return getBracketAvailability(league) === "bracket_open";
-}
-
-export function canViewOthersBrackets(league: League): boolean {
-  return isLeagueLocked(league);
 }

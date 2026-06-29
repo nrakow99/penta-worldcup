@@ -5,6 +5,66 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { generateInviteCode } from "@/lib/utils/invite-code";
 import { createDefaultMatches, getNextMatchLink } from "@/lib/bracket/bracket-utils";
+// Type alias for the Supabase client — avoids re-importing the function
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DbClient = any;
+
+interface MatchSnap {
+  id: string;
+  match_number: number;
+  team_a_id: string | null;
+  team_b_id: string | null;
+  winner_team_id: string | null;
+}
+
+/**
+ * Recursively clear the team slot (and winner if applicable) that was
+ * populated by the winning team propagated from `matchNumber`.
+ * Only clears downstream — does NOT touch `matchNumber` itself.
+ */
+async function cascadeClearDownstream(
+  supabase: DbClient,
+  leagueId: string,
+  matchNumber: number,
+  matchByNumber: Map<number, MatchSnap>
+): Promise<void> {
+  const link = getNextMatchLink(matchNumber);
+  if (!link) return;
+
+  const nextMatch = matchByNumber.get(link.nextMatchNumber);
+  if (!nextMatch) return;
+
+  const slotField = link.slot === "a" ? "team_a_id" : "team_b_id";
+  const slotTeamId = nextMatch[slotField];
+
+  const updates: Record<string, null> = { [slotField]: null };
+
+  // If the next match's WINNER is the same team that was in this slot,
+  // also clear the winner and keep cascading.
+  const winnerWasThisSlot =
+    slotTeamId !== null && nextMatch.winner_team_id === slotTeamId;
+
+  if (winnerWasThisSlot) {
+    updates.winner_team_id = null;
+    await supabase
+      .from("actual_results")
+      .delete()
+      .eq("league_id", leagueId)
+      .eq("match_id", nextMatch.id);
+    await cascadeClearDownstream(
+      supabase,
+      leagueId,
+      link.nextMatchNumber,
+      matchByNumber
+    );
+  }
+
+  await supabase.from("matches").update(updates).eq("id", nextMatch.id);
+}
+import {
+  WORLD_CUP_2026_TEAMS,
+  SEEDED_R32_MATCHUPS,
+} from "@/lib/bracket/seeded-teams";
 
 // ─── Shared admin guard ──────────────────────────────────────────────────────
 
@@ -133,6 +193,25 @@ export async function createLeague(formData: FormData) {
     { onConflict: "league_id,user_id" }
   );
 
+  // ── Seed all 32 World Cup teams for this league ───────────────────────────
+  const { data: insertedTeams } = await supabase
+    .from("teams")
+    .insert(
+      WORLD_CUP_2026_TEAMS.map((t) => ({
+        league_id: league.id,
+        name: t.name,
+        flag_emoji: t.flagEmoji,
+        is_placeholder: false,
+      }))
+    )
+    .select();
+
+  // Build name → id lookup for quick match assignment
+  const teamByName = new Map(
+    (insertedTeams ?? []).map((t) => [t.name as string, t.id as string])
+  );
+
+  // ── Create all 31 bracket matches ──────────────────────────────────────────
   const defaultMatches = createDefaultMatches(league.id);
   const { data: insertedMatches } = await supabase
     .from("matches")
@@ -141,22 +220,41 @@ export async function createLeague(formData: FormData) {
 
   if (insertedMatches) {
     const matchByNumber = new Map(
-      insertedMatches.map((m) => [m.match_number, m])
+      insertedMatches.map((m) => [m.match_number as number, m])
     );
 
+    // ── Link next_match_id and pre-populate R32 teams in a single pass ─────
     for (const match of insertedMatches) {
-      const link = getNextMatchLink(match.match_number);
+      const num = match.match_number as number;
+      const link = getNextMatchLink(num);
+      const r32Pair = SEEDED_R32_MATCHUPS[num];
+
+      const updates: Record<string, unknown> = {};
+
       if (link) {
         const nextMatch = matchByNumber.get(link.nextMatchNumber);
         if (nextMatch) {
-          await supabase
-            .from("matches")
-            .update({
-              next_match_id: nextMatch.id,
-              next_match_slot: link.slot,
-            })
-            .eq("id", match.id);
+          updates.next_match_id = nextMatch.id;
+          updates.next_match_slot = link.slot;
         }
+      }
+
+      if (r32Pair) {
+        const [nameA, nameB] = r32Pair;
+        const idA = teamByName.get(nameA);
+        const idB = teamByName.get(nameB);
+        if (idA) {
+          updates.team_a_id = idA;
+          updates.team_a_placeholder = null;
+        }
+        if (idB) {
+          updates.team_b_id = idB;
+          updates.team_b_placeholder = null;
+        }
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await supabase.from("matches").update(updates).eq("id", match.id);
       }
     }
   }
@@ -178,6 +276,13 @@ export async function joinLeague(formData: FormData) {
   if (!user) return { error: "Not authenticated" };
 
   const inviteCode = (formData.get("inviteCode") as string).toUpperCase().trim();
+  const rawName = (formData.get("displayName") as string | null) ?? "";
+  const displayName = rawName.trim();
+
+  // Validate display name if provided
+  if (displayName && (displayName.length < 2 || displayName.length > 20)) {
+    return { error: "Display name must be 2–20 characters" };
+  }
 
   const { data: league, error: leagueError } = await supabase
     .from("leagues")
@@ -186,6 +291,14 @@ export async function joinLeague(formData: FormData) {
     .single();
 
   if (leagueError || !league) return { error: "Invalid invite code" };
+
+  // Save display name before anything else (so errors don't leave it unset)
+  if (displayName) {
+    await supabase.from("profiles").upsert(
+      { id: user.id, email: user.email ?? "", display_name: displayName },
+      { onConflict: "id" }
+    );
+  }
 
   const { data: existing } = await supabase
     .from("league_members")
@@ -213,6 +326,31 @@ export async function joinLeague(formData: FormData) {
 
   revalidatePath("/dashboard");
   redirect(`/league/${league.id}`);
+}
+
+export async function setDisplayName(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const displayName = ((formData.get("displayName") as string) ?? "").trim();
+
+  if (displayName.length < 2 || displayName.length > 20) {
+    return { error: "Display name must be 2–20 characters" };
+  }
+
+  const { error } = await supabase.from("profiles").upsert(
+    { id: user.id, email: user.email ?? "", display_name: displayName },
+    { onConflict: "id" }
+  );
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard");
+  revalidatePath("/settings");
+  return { success: true };
 }
 
 export async function saveBracketPicks(
@@ -364,126 +502,178 @@ export async function addComment(leagueId: string, content: string) {
   return { success: true };
 }
 
+/**
+ * Set the actual winner of a match.
+ *
+ * - No scores required or stored.
+ * - If the match already has a winner (admin is changing it), cascade-clears
+ *   all downstream actual results that depended on the old winner first.
+ * - Then propagates the new winner into the next round's team slot so the
+ *   admin can immediately enter subsequent-round results.
+ * - Recalculates leaderboard points via revalidatePath.
+ */
 export async function recordMatchResult(
   leagueId: string,
   matchId: string,
-  winnerTeamId: string,
-  teamAScore: number,
-  teamBScore: number
+  winnerTeamId: string
 ) {
   const { error: authError, supabase, user } = await requireLeagueAdmin(leagueId);
   if (authError || !user) return { error: authError ?? "Not authorized" };
 
+  // Load all matches once for cascade logic
+  const { data: allMatchRows } = await supabase
+    .from("matches")
+    .select("id, match_number, team_a_id, team_b_id, winner_team_id")
+    .eq("league_id", leagueId);
+
+  const allMatches = (allMatchRows ?? []) as MatchSnap[];
+  const matchByNumber = new Map(allMatches.map((m) => [m.match_number, m]));
+  const thisMatch = allMatches.find((m) => m.id === matchId);
+
+  if (!thisMatch) return { error: "Match not found" };
+
+  // If already has a winner (changing winner), clear the old downstream chain
+  if (thisMatch.winner_team_id) {
+    await cascadeClearDownstream(
+      supabase,
+      leagueId,
+      thisMatch.match_number,
+      matchByNumber
+    );
+  }
+
+  // Set new winner on this match
   await supabase
     .from("matches")
-    .update({
-      winner_team_id: winnerTeamId,
-      team_a_score: teamAScore,
-      team_b_score: teamBScore,
-    })
+    .update({ winner_team_id: winnerTeamId })
     .eq("id", matchId);
 
+  // Propagate winner into the next round's team slot
+  const link = getNextMatchLink(thisMatch.match_number);
+  if (link) {
+    const nextMatch = matchByNumber.get(link.nextMatchNumber);
+    if (nextMatch) {
+      const slotUpdate =
+        link.slot === "a"
+          ? { team_a_id: winnerTeamId, team_a_placeholder: null }
+          : { team_b_id: winnerTeamId, team_b_placeholder: null };
+      await supabase.from("matches").update(slotUpdate).eq("id", nextMatch.id);
+    }
+  }
+
+  // Mirror to actual_results audit table
   await supabase.from("actual_results").upsert(
     {
       league_id: leagueId,
       match_id: matchId,
       winner_team_id: winnerTeamId,
-      team_a_score: teamAScore,
-      team_b_score: teamBScore,
+      team_a_score: 0,
+      team_b_score: 0,
       recorded_by: user.id,
     },
     { onConflict: "league_id,match_id" }
   );
 
-  const { data: allResults } = await supabase
-    .from("actual_results")
-    .select("team_a_score, team_b_score")
-    .eq("league_id", leagueId);
-
-  const totalGoals = (allResults ?? []).reduce(
-    (sum, r) => sum + r.team_a_score + r.team_b_score,
-    0
-  );
-
+  // Mark league as in_progress
   await supabase
     .from("leagues")
-    .update({ status: "in_progress", total_goals: totalGoals })
+    .update({ status: "in_progress" })
     .eq("id", leagueId);
 
   revalidatePath(`/league/${leagueId}`);
-  revalidatePath(`/league/${leagueId}/admin`);
+  revalidatePath(`/league/${leagueId}/admin/results`);
   return { success: true };
 }
 
-export async function upsertTeam(
-  leagueId: string,
-  team: {
-    id?: string;
-    name: string;
-    shortName?: string;
-    flagEmoji?: string;
-    isPlaceholder?: boolean;
-    placeholderLabel?: string;
-  }
-) {
+/**
+ * Remove the actual winner from a match and cascade-clear all downstream
+ * actual results that depended on it.
+ */
+export async function clearMatchResult(leagueId: string, matchId: string) {
   const { error: authError, supabase } = await requireLeagueAdmin(leagueId);
   if (authError) return { error: authError };
 
-  if (team.id) {
-    const { error } = await supabase
-      .from("teams")
-      .update({
-        name: team.name,
-        short_name: team.shortName,
-        flag_emoji: team.flagEmoji,
-        is_placeholder: team.isPlaceholder ?? false,
-        placeholder_label: team.placeholderLabel,
-      })
-      .eq("id", team.id);
-    if (error) return { error: error.message };
-  } else {
-    const { error } = await supabase.from("teams").insert({
-      league_id: leagueId,
-      name: team.name,
-      short_name: team.shortName,
-      flag_emoji: team.flagEmoji,
-      is_placeholder: team.isPlaceholder ?? false,
-      placeholder_label: team.placeholderLabel,
-    });
-    if (error) return { error: error.message };
-  }
-
-  revalidatePath(`/league/${leagueId}/admin`);
-  return { success: true };
-}
-
-export async function updateMatchTeams(
-  matchId: string,
-  leagueId: string,
-  data: {
-    teamAId?: string | null;
-    teamBId?: string | null;
-    teamAPlaceholder?: string;
-    teamBPlaceholder?: string;
-  }
-) {
-  const { error: authError, supabase } = await requireLeagueAdmin(leagueId);
-  if (authError) return { error: authError };
-
-  const { error } = await supabase
+  // Load all matches for cascade
+  const { data: allMatchRows } = await supabase
     .from("matches")
-    .update({
-      team_a_id: data.teamAId,
-      team_b_id: data.teamBId,
-      team_a_placeholder: data.teamAPlaceholder,
-      team_b_placeholder: data.teamBPlaceholder,
-    })
+    .select("id, match_number, team_a_id, team_b_id, winner_team_id")
+    .eq("league_id", leagueId);
+
+  const allMatches = (allMatchRows ?? []) as MatchSnap[];
+  const matchByNumber = new Map(allMatches.map((m) => [m.match_number, m]));
+  const thisMatch = allMatches.find((m) => m.id === matchId);
+
+  if (!thisMatch) return { error: "Match not found" };
+
+  // Cascade-clear downstream slots/winners that depended on this match
+  await cascadeClearDownstream(
+    supabase,
+    leagueId,
+    thisMatch.match_number,
+    matchByNumber
+  );
+
+  // Clear this match's own winner
+  await supabase
+    .from("matches")
+    .update({ winner_team_id: null })
     .eq("id", matchId);
 
+  await supabase
+    .from("actual_results")
+    .delete()
+    .eq("league_id", leagueId)
+    .eq("match_id", matchId);
+
+  revalidatePath(`/league/${leagueId}`);
+  revalidatePath(`/league/${leagueId}/admin/results`);
+  return { success: true };
+}
+
+export async function deleteLeague(leagueId: string) {
+  const { error: authError, supabase } = await requireLeagueAdmin(leagueId);
+  if (authError) return { error: authError };
+
+  // Collect bracket ids first so we can remove bracket_picks
+  const { data: brackets } = await supabase
+    .from("brackets")
+    .select("id")
+    .eq("league_id", leagueId);
+
+  if (brackets && brackets.length > 0) {
+    const ids = brackets.map((b) => b.id as string);
+    await supabase.from("bracket_picks").delete().in("bracket_id", ids);
+  }
+
+  // Delete everything in FK-safe order
+  await supabase.from("actual_results").delete().eq("league_id", leagueId);
+  await supabase.from("comments").delete().eq("league_id", leagueId);
+  await supabase.from("punishments").delete().eq("league_id", leagueId);
+  await supabase.from("api_sync_logs").delete().eq("league_id", leagueId);
+
+  // Group-stage tables (safe no-ops if league never used group stage)
+  const { data: groups } = await supabase
+    .from("groups")
+    .select("id")
+    .eq("league_id", leagueId);
+  if (groups && groups.length > 0) {
+    const gids = groups.map((g) => g.id as string);
+    await supabase.from("group_standings").delete().in("group_id", gids);
+    await supabase.from("group_teams").delete().in("group_id", gids);
+  }
+  await supabase.from("group_matches").delete().eq("league_id", leagueId);
+  await supabase.from("groups").delete().eq("league_id", leagueId);
+
+  await supabase.from("brackets").delete().eq("league_id", leagueId);
+  await supabase.from("matches").delete().eq("league_id", leagueId);
+  await supabase.from("teams").delete().eq("league_id", leagueId);
+  await supabase.from("league_members").delete().eq("league_id", leagueId);
+
+  const { error } = await supabase.from("leagues").delete().eq("id", leagueId);
   if (error) return { error: error.message };
 
-  revalidatePath(`/league/${leagueId}/admin`);
-  return { success: true };
+  revalidatePath("/dashboard");
+  redirect("/dashboard");
 }
 
 export async function resetBracketData(leagueId: string) {

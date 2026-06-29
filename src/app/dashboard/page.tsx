@@ -43,13 +43,13 @@ export default async function DashboardPage() {
             <Link href="/league/join">
               <Button variant="secondary" size="sm">
                 <Users className="mr-1 h-4 w-4" />
-                Join League
+                Join
               </Button>
             </Link>
             <Link href="/league/create">
               <Button size="sm">
                 <Plus className="mr-1 h-4 w-4" />
-                Create League
+                New League
               </Button>
             </Link>
           </div>

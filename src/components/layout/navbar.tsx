@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Trophy, LogOut } from "lucide-react";
+import { Trophy, LogOut, UserCircle } from "lucide-react";
 import { signOut } from "@/lib/actions/league-actions";
 
 export function Navbar({ userName }: { userName?: string }) {
@@ -13,12 +13,17 @@ export function Navbar({ userName }: { userName?: string }) {
           </span>
         </Link>
 
-        <div className="flex items-center gap-4">
-          {userName && (
-            <span className="hidden text-sm text-zinc-400 sm:inline">
-              {userName}
+        <div className="flex items-center gap-3">
+          <Link
+            href="/settings"
+            className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-200"
+            title="Profile settings"
+          >
+            <UserCircle className="h-4 w-4" />
+            <span className="hidden sm:inline">
+              {userName ?? "Set name"}
             </span>
-          )}
+          </Link>
           <form action={signOut}>
             <button
               type="submit"
@@ -43,19 +48,11 @@ export function LeagueNav({
 }) {
   const links = [
     { href: `/league/${leagueId}`, label: "Dashboard" },
-    { href: `/league/${leagueId}/groups`, label: "Groups" },
     { href: `/league/${leagueId}/bracket`, label: "My Bracket" },
     ...(isAdmin
       ? [
           { href: `/league/${leagueId}/admin`, label: "Admin" },
-          {
-            href: `/league/${leagueId}/admin/tournament-update`,
-            label: "Update",
-          },
-          {
-            href: `/league/${leagueId}/admin/knockout-setup`,
-            label: "Knockout",
-          },
+          { href: `/league/${leagueId}/admin/results`, label: "Results" },
         ]
       : []),
   ];

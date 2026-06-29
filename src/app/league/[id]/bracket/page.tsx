@@ -25,6 +25,15 @@ export default async function MyBracketPage({ params }: PageProps) {
 
   if (!user) redirect("/login");
 
+  // Require a display name before the user can fill out their bracket
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("display_name")
+    .eq("id", user.id)
+    .maybeSingle();
+  const displayName =
+    (profile as { display_name: string | null } | null)?.display_name ?? "";
+
   const details = await getLeagueDetails(id, user.id);
   if (!details) notFound();
 
@@ -38,14 +47,27 @@ export default async function MyBracketPage({ params }: PageProps) {
 
   return (
     <div className="min-h-full bg-zinc-950">
-      <Navbar />
+      <Navbar userName={displayName} />
       <main className="mx-auto max-w-7xl px-4 py-6">
         <h1 className="mb-4 text-2xl font-bold text-zinc-100">My Bracket</h1>
         <LeagueNav leagueId={id} isAdmin={details.isAdmin} />
 
         <div className="mt-6">
-          {!canEdit && !details.isLocked ? (
-            <Card className="text-center py-12">
+          {/* Prompt user to set display name before they can interact */}
+          {!displayName ? (
+            <Card className="py-12 text-center">
+              <p className="text-lg font-medium text-amber-300">
+                Set your display name first
+              </p>
+              <p className="mt-2 text-sm text-zinc-500">
+                Your display name appears on the leaderboard and bracket views.
+              </p>
+              <Link href="/settings" className="mt-6 inline-block">
+                <Button>Set Display Name</Button>
+              </Link>
+            </Card>
+          ) : !canEdit && !details.isLocked ? (
+            <Card className="py-12 text-center">
               <p className="text-lg font-medium text-amber-300">
                 Bracket not open yet
               </p>
@@ -53,12 +75,8 @@ export default async function MyBracketPage({ params }: PageProps) {
                 Status: {BRACKET_STATUS_LABELS[availability]}
               </p>
               <p className="mt-1 text-sm text-zinc-500">
-                The admin must confirm Round of 32 matchups before you can
-                fill out your bracket.
-              </p>
-              <Link href={`/league/${id}/groups`} className="mt-4 inline-block">
-                <Button variant="secondary">View Group Stage</Button>
-              </Link>
+              The admin will open the bracket when it&apos;s ready.
+            </p>
             </Card>
           ) : (
             <BracketBuilder
